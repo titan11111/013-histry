@@ -27,8 +27,8 @@
 
     <div class="container">
         <div id="title-screen" class="screen active">
-            <h1>⚔️ 日本近現代史クイズ ⚔️</h1>
-            <p class="subtitle">中世の騎士となり、歴史の旅に出よう</p>
+            <h1>🗡️ 日本近現代史クイズ 🗡️</h1>
+            <p class="subtitle">幕末の藩士となり、歴史の旅に出よう</p>
             
             <div class="genre-selection">
                 <h2>📜 冒険ルートを選択せよ</h2>
@@ -40,7 +40,7 @@
 
         <div id="quiz-screen" class="screen">
             <div class="header">
-                <button id="back-btn" class="back-btn">🏠 城へ戻る</button>
+                <button id="back-btn" class="back-btn">🏯 城へ戻る</button>
                 <div class="progress">
                     <span id="question-number">1</span> / <span id="total-questions">20</span>
                 </div>
@@ -58,7 +58,7 @@
 
         <div id="result-screen" class="screen">
             <div class="result-content">
-                <h2>🏆 戦いの結果 🏆</h2>
+                <h2>🏅 戦いの結果 🏅</h2>
                 <div class="score-display">
                     <div class="score-circle">
                         <span id="score-text">0/20</span>
@@ -68,7 +68,7 @@
                 
                 <div class="result-actions">
                     <button id="retry-btn" class="btn btn-primary">⚔️ 再び挑戦</button>
-                    <button id="home-btn" class="btn btn-secondary">🏰 城へ帰還</button>
+                    <button id="home-btn" class="btn btn-secondary">🏯 城へ帰還</button>
                 </div>
             </div>
         </div>
@@ -90,6 +90,23 @@
             <div class="loading-content">
                 <div class="spinner"></div>
                 <p>📚 古書を読み込み中...</p>
+            </div>
+        </div>
+
+        <div id="shura-result-screen" class="screen">
+            <div class="shura-result-content">
+                <div class="result-icon">
+                    <span id="shura-result-icon">💀</span>
+                </div>
+                <h3 id="shura-result-title">修羅の道に散る...</h3>
+                <div class="shura-explanation-box">
+                    <p id="shura-explanation-text"></p>
+                    <p id="shura-survived-text" class="shura-survived"></p>
+                </div>
+                <div class="result-actions">
+                    <button id="shura-retry-btn" class="btn btn-primary">⚔️ 修羅道へ再挑戦</button>
+                    <button id="shura-home-btn" class="btn btn-secondary">🏯 城へ帰還</button>
+                </div>
             </div>
         </div>
     </div>
