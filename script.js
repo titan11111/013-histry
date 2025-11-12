@@ -5,8 +5,10 @@ let currentQuestionIndex = 0;
 let score = 0;
 let questions = [];
 let clearedGenres = {}; // クリアしたジャンルを保存するオブジェクト
+let wrongAnswers = {}; // 間違えた問題を保存
 let bgmEnabled = false; // BGMの状態
 let soundEnabled = true; // 効果音の状態
+let isShuraRoute = false; // 修羅ルート中かどうか
 
 // 画面要素の取得
 const screens = {
@@ -14,7 +16,8 @@ const screens = {
     quiz: document.getElementById('quiz-screen'),
     result: document.getElementById('result-screen'),
     explanation: document.getElementById('explanation-screen'),
-    loading: document.getElementById('loading-screen')
+    loading: document.getElementById('loading-screen'),
+    shuraResult: document.getElementById('shura-result-screen')
 };
 
 // 新しい要素の取得
@@ -23,12 +26,14 @@ const startAllClearedButton = document.getElementById('start-all-cleared-button'
 const bgmAudio = document.getElementById('bgm'); // BGM要素を取得
 const bgmStorageKey = 'bgmEnabled'; // LocalStorageのキー
 const soundStorageKey = 'soundEnabled'; // 効果音設定のキー
+const wrongAnswersStorageKey = 'wrongAnswers'; // 間違えた問題
 
 // アプリ初期化
 document.addEventListener('DOMContentLoaded', async () => {
     try {
         loadSettings(); // 設定をロード
         loadClearedGenres(); // クリア状況をロード
+        loadWrongAnswers(); // 間違えた問題をロード
         initializeBGM(); // BGMの初期化
         createControlButtons(); // 音声制御ボタンを作成
         await loadQuizData();
@@ -214,241 +219,138 @@ async function loadQuizData() {
     try {
         showScreen('loading');
         
-        // サンプルデータ（JSONファイルがない場合の代替）
-        const sampleData = {
-            genres: [
-                {
-                    id: 'meiji',
-                    name: '明治維新',
-                    description: '日本の近代化の始まり',
-                    questions: [
-                        {
-                            id: 1,
-                            question: '明治維新が起こった年は？',
-                            choices: ['1867年', '1868年', '1869年', '1870年'],
-                            correct: 1,
-                            explanation: '明治維新は1868年に起こりました。王政復古の大号令が発せられ、江戸幕府が終わりを告げました。'
-                        },
-                        {
-                            id: 2,
-                            question: '廃藩置県が行われた年は？',
-                            choices: ['1869年', '1870年', '1871年', '1872年'],
-                            correct: 2,
-                            explanation: '廃藩置県は1871年（明治4年）に行われ、藩を廃止して県を置く中央集権体制が確立されました。'
-                        }
-                    ]
-                },
-                {
-                    id: 'taisho',
-                    name: '大正時代',
-                    description: '大正デモクラシーの時代',
-                    questions: [
-                        {
-                            id: 1,
-                            question: '大正時代の始まりは？',
-                            choices: ['1910年', '1911年', '1912年', '1913年'],
-                            correct: 2,
-                            explanation: '大正時代は1912年（大正元年）から1926年まで続きました。明治天皇が崩御し、大正天皇が即位しました。'
-                        },
-                        {
-                            id: 2,
-                            question: '第一次世界大戦中の日本の動きは？',
-                            choices: ['中立を保った', '連合国側で参戦', '同盟国側で参戦', '戦争に関与しなかった'],
-                            correct: 1,
-                            explanation: '日本は日英同盟に基づき連合国側で第一次世界大戦に参戦し、大戦景気で経済が発展しました。'
-                        }
-                    ]
-                }
-            ]
-        };
-
-        // まずJSONファイルの読み込みを試行
+        // JSONファイルから読み込み（複数の方法を試す）
+        let response;
+        
         try {
-            const response = await fetch('./modern_history_quizData_complete.json');
-            if (response.ok) {
-                quizData = await response.json();
-            } else {
-                throw new Error('JSONファイルが見つかりません');
+            // 方法1: JSONファイルを直接読み込み
+            response = await fetch('./modern_history_quizData_complete.json');
+        } catch (e1) {
+            try {
+                // 方法2: 絶対パスで読み込み
+                response = await fetch('/modern_history_quizData_complete.json');
+            } catch (e2) {
+                // 方法3: サンプルデータを使用
+                console.warn('JSONファイルの読み込みに失敗しました。サンプルデータを使用します。');
+                quizData = createSampleData();
+                renderGenreButtons();
+                return;
             }
-        } catch (fetchError) {
-            console.warn('JSONファイルの読み込みに失敗、サンプルデータを使用:', fetchError);
-            quizData = sampleData;
         }
-
-        renderGenreButtons();
+        
+        if (response.ok) {
+            quizData = await response.json();
+            renderGenreButtons();
+        } else {
+            throw new Error('JSONファイルが見つかりません');
+        }
     } catch (error) {
         console.error('データ読み込みエラー:', error);
-        showErrorMessage('クイズデータの読み込みに失敗しました。');
+        // フォールバック: サンプルデータを使用
+        quizData = createSampleData();
+        renderGenreButtons();
     }
 }
 
-// イベントリスナー設定
-function setupEventListeners() {
-    // ホームボタン
-    document.getElementById('home-btn')?.addEventListener('click', () => {
-        playSound('click');
-        resetQuiz();
-        showScreen('title');
-    });
-
-    // 再挑戦ボタン
-    document.getElementById('retry-btn')?.addEventListener('click', () => {
-        playSound('click');
-        currentQuestionIndex = 0;
-        score = 0;
-        showScreen('quiz');
-        displayQuestion();
-    });
-
-    // 次の問題へボタン
-    document.getElementById('next-btn')?.addEventListener('click', () => {
-        playSound('click');
-        advanceQuestion();
-    });
-
-    // 戻るボタン
-    document.getElementById('back-btn')?.addEventListener('click', () => {
-        if (confirm('クイズを中断してタイトルに戻りますか？')) {
-            playSound('click');
-            resetQuiz();
-            showScreen('title');
-        }
-    });
-
-    // 全クリアボタン
-    startAllClearedButton?.addEventListener('click', () => {
-        playSound('correct');
-        showCongratulationsMessage();
-    });
-
-    // キーボードショートカット
-    document.addEventListener('keydown', handleKeydown);
-}
-
-// キーボード操作
-function handleKeydown(event) {
-    if (screens.quiz.classList.contains('active')) {
-        // クイズ画面でのキーボード操作
-        const choiceButtons = document.querySelectorAll('.choice-btn:not(.disabled)');
-        if (event.key >= '1' && event.key <= '4') {
-            const index = parseInt(event.key) - 1;
-            if (choiceButtons[index]) {
-                choiceButtons[index].click();
+// サンプルデータ作成（フォールバック用）
+function createSampleData() {
+    return {
+        genres: [
+            {
+                id: 'sample1',
+                name: 'サンプル1',
+                description: 'テストデータ',
+                questions: [
+                    {
+                        id: 1,
+                        question: 'これはサンプル問題です。正しい答えはどれ？',
+                        choices: ['選択肢1', '選択肢2', '選択肢3', '選択肢4'],
+                        correct: 0,
+                        explanation: 'サンプルデータです。JSONファイルを正しく配置してください。'
+                    }
+                ]
             }
-        }
-    } else if (screens.explanation.classList.contains('active')) {
-        // 解説画面でのキーボード操作
-        if (event.key === 'Enter' || event.key === ' ') {
-            document.getElementById('next-btn')?.click();
-        }
-    }
-}
-
-// おめでとうメッセージの表示
-function showCongratulationsMessage() {
-    const messageDiv = document.createElement('div');
-    messageDiv.style.cssText = `
-        position: fixed;
-        top: 0;
-        left: 0;
-        width: 100%;
-        height: 100%;
-        background: rgba(0, 0, 0, 0.8);
-        display: flex;
-        justify-content: center;
-        align-items: center;
-        z-index: 10000;
-    `;
-
-    const contentDiv = document.createElement('div');
-    contentDiv.style.cssText = `
-        background: var(--card-bg);
-        border: 3px solid var(--accent-color);
-        border-radius: 15px;
-        padding: 40px;
-        text-align: center;
-        max-width: 80%;
-        box-shadow: 0 0 30px rgba(218, 165, 32, 0.5);
-    `;
-
-    contentDiv.innerHTML = `
-        <div style="font-size: 4rem; margin-bottom: 20px;">🏆</div>
-        <h2 style="color: var(--accent-color); font-size: 2.5rem; margin-bottom: 20px;">おめでとうございます！</h2>
-        <p style="font-size: 1.3rem; margin-bottom: 30px; color: var(--text-light);">
-            全ての歴史ルートをクリアしました！<br>
-            あなたは真の歴史マスターです！
-        </p>
-        <button id="close-congratulations" style="
-            background: var(--accent-color);
-            border: 2px solid var(--button-border);
-            color: var(--text-primary);
-            padding: 15px 30px;
-            border-radius: 10px;
-            cursor: pointer;
-            font-size: 1.2rem;
-            font-weight: bold;
-        ">閉じる</button>
-    `;
-
-    messageDiv.appendChild(contentDiv);
-    document.body.appendChild(messageDiv);
-
-    // アニメーション効果
-    contentDiv.style.transform = 'scale(0.8)';
-    contentDiv.style.opacity = '0';
-    
-    setTimeout(() => {
-        contentDiv.style.transition = 'all 0.3s ease';
-        contentDiv.style.transform = 'scale(1)';
-        contentDiv.style.opacity = '1';
-    }, 100);
-
-    // 閉じるボタンのイベント
-    document.getElementById('close-congratulations').onclick = () => {
-        document.body.removeChild(messageDiv);
+        ]
     };
 }
 
-// 画面表示切り替え
+// 画面表示
 function showScreen(screenName) {
     Object.values(screens).forEach(screen => {
-        screen.classList.remove('active');
+        if (screen) screen.classList.remove('active');
     });
     
     if (screens[screenName]) {
         screens[screenName].classList.add('active');
     }
-
-    // タイトル画面に戻る際にジャンルボタンを再レンダリング
-    if (screenName === 'title') {
-        renderGenreButtons();
-    }
 }
 
-// ジャンルボタンのレンダリング
+// イベントリスナー設定
+function setupEventListeners() {
+    document.getElementById('back-btn')?.addEventListener('click', () => {
+        playSound('click');
+        resetQuiz();
+        renderGenreButtons();
+        showScreen('title');
+    });
+
+    document.getElementById('next-btn')?.addEventListener('click', () => {
+        playSound('click');
+        advanceQuestion();
+    });
+
+    document.getElementById('retry-btn')?.addEventListener('click', () => {
+        playSound('click');
+        startQuiz(currentGenre);
+    });
+
+    document.getElementById('home-btn')?.addEventListener('click', () => {
+        playSound('click');
+        resetQuiz();
+        renderGenreButtons();
+        showScreen('title');
+    });
+
+    document.getElementById('shura-retry-btn')?.addEventListener('click', () => {
+        playSound('click');
+        startShuraRoute();
+    });
+
+    document.getElementById('shura-home-btn')?.addEventListener('click', () => {
+        playSound('click');
+        isShuraRoute = false;
+        resetQuiz();
+        renderGenreButtons();
+        showScreen('title');
+    });
+
+    document.getElementById('start-all-cleared-button')?.addEventListener('click', () => {
+        playSound('click');
+        startShuraRoute();
+    });
+}
+
+// ジャンルボタン表示
 function renderGenreButtons() {
-    if (!genreButtonsContainer || !quizData) return;
-    
+    if (!quizData || !quizData.genres) return;
+
     genreButtonsContainer.innerHTML = '';
+    
     let allGenresCleared = true;
 
     quizData.genres.forEach(genre => {
+        const isCleared = clearedGenres[genre.id];
+        if (!isCleared) allGenresCleared = false;
+
         const button = document.createElement('button');
         button.classList.add('genre-button');
-        button.dataset.genreId = genre.id;
-        
-        const questionCount = genre.questions ? genre.questions.length : 0;
+        if (isCleared) button.classList.add('cleared');
+
         button.innerHTML = `
             <h3>${genre.name}</h3>
             <p>${genre.description}</p>
-            <small>問題数: ${questionCount}問</small>
+            <p>問題数: ${genre.questions ? genre.questions.length : 0}問</p>
         `;
-
-        if (clearedGenres[genre.id]) {
-            button.classList.add('cleared');
-        } else {
-            allGenresCleared = false;
-        }
 
         button.addEventListener('click', () => {
             playSound('click');
@@ -456,6 +358,25 @@ function renderGenreButtons() {
         });
         genreButtonsContainer.appendChild(button);
     });
+
+    // 修羅ルートボタンの表示
+    const shuraButton = document.createElement('button');
+    shuraButton.classList.add('genre-button', 'shura-route');
+    shuraButton.innerHTML = `
+        <h3>🔥 修羅のルート 🔥</h3>
+        <p>間違えた問題ラッシュ。きみは何問まで耐えられるか</p>
+        <p>問題数: 不明</p>
+    `;
+
+    shuraButton.addEventListener('click', () => {
+        playSound('click');
+        if (Object.keys(wrongAnswers).length === 0 || getTotalWrongQuestions() === 0) {
+            showErrorMessage('修羅ルートに出題する間違えた問題がありません。他のルートで問題を解いてください。');
+        } else {
+            startShuraRoute();
+        }
+    });
+    genreButtonsContainer.appendChild(shuraButton);
 
     // 全クリアボタンの表示制御
     if (startAllClearedButton) {
@@ -467,6 +388,17 @@ function renderGenreButtons() {
     }
 }
 
+// 間違えた問題の総数を取得
+function getTotalWrongQuestions() {
+    let total = 0;
+    for (const genreId in wrongAnswers) {
+        if (Array.isArray(wrongAnswers[genreId])) {
+            total += wrongAnswers[genreId].length;
+        }
+    }
+    return total;
+}
+
 // クイズ開始
 function startQuiz(genreId) {
     const selectedGenre = quizData.genres.find(genre => genre.id === genreId);
@@ -475,18 +407,57 @@ function startQuiz(genreId) {
         return;
     }
 
+    isShuraRoute = false;
     currentGenre = genreId;
     currentQuestionIndex = 0;
     score = 0;
-    questions = [...selectedGenre.questions]; // 配列をコピー（シャッフル用）
-    
-    // 問題をシャッフル（オプション）
-    // questions = shuffleArray(questions);
+    questions = [...selectedGenre.questions]; // 配列をコピー
     
     const genreTitle = document.getElementById('genre-title');
     const totalQuestions = document.getElementById('total-questions');
     
-    if (genreTitle) genreTitle.textContent = selectedGenre.name;
+    if (genreTitle) {
+        genreTitle.textContent = selectedGenre.name;
+        genreTitle.classList.remove('shura-title');
+    }
+    if (totalQuestions) totalQuestions.textContent = questions.length;
+    
+    showScreen('quiz');
+    displayQuestion();
+}
+
+// 修羅ルート開始
+function startShuraRoute() {
+    isShuraRoute = true;
+    currentGenre = 'shura';
+    currentQuestionIndex = 0;
+    score = 0;
+    questions = [];
+
+    // 間違えた問題を全て集める
+    for (const genreId in wrongAnswers) {
+        if (Array.isArray(wrongAnswers[genreId])) {
+            questions.push(...wrongAnswers[genreId]);
+        }
+    }
+
+    if (questions.length === 0) {
+        showErrorMessage('修羅ルートに出題する間違えた問題がありません。');
+        renderGenreButtons();
+        showScreen('title');
+        return;
+    }
+
+    // シャッフル
+    questions = shuffleArray(questions);
+
+    const genreTitle = document.getElementById('genre-title');
+    const totalQuestions = document.getElementById('total-questions');
+    
+    if (genreTitle) {
+        genreTitle.textContent = '⚔️ 修羅のルート ⚔️';
+        genreTitle.classList.add('shura-title');
+    }
     if (totalQuestions) totalQuestions.textContent = questions.length;
     
     showScreen('quiz');
@@ -510,7 +481,11 @@ function displayQuestion() {
     const questionNumberSpan = document.getElementById('question-number');
 
     if (currentQuestionIndex >= questions.length) {
-        showResult();
+        if (isShuraRoute) {
+            showShuraResult();
+        } else {
+            showResult();
+        }
         return;
     }
 
@@ -528,7 +503,7 @@ function displayQuestion() {
             button.textContent = choice;
             button.dataset.index = index;
             button.addEventListener('click', () => {
-                checkAnswer(index, question.correct, question.explanation);
+                checkAnswer(index, question.correct, question.explanation, question);
             });
             choicesContainer.appendChild(button);
         });
@@ -536,7 +511,7 @@ function displayQuestion() {
 }
 
 // 回答チェック
-function checkAnswer(selectedIndex, correctAnswerIndex, explanationText) {
+function checkAnswer(selectedIndex, correctAnswerIndex, explanationText, question) {
     const choices = document.querySelectorAll('.choice-btn');
     const isCorrect = (selectedIndex === correctAnswerIndex);
 
@@ -558,6 +533,25 @@ function checkAnswer(selectedIndex, correctAnswerIndex, explanationText) {
         document.getElementById('result-icon').textContent = '⭕';
         document.getElementById('result-title').textContent = '正解！';
     } else {
+        // 間違えた問題を記録
+        recordWrongAnswer(question);
+
+        // 修羅ルートの場合は即終了
+        if (isShuraRoute) {
+            document.getElementById('result-icon').textContent = '❌';
+            document.getElementById('result-title').textContent = '不正解...';
+            
+            const explanationElement = document.getElementById('explanation-text');
+            if (explanationElement) {
+                explanationElement.textContent = explanationText;
+            }
+            
+            setTimeout(() => {
+                showShuraResult();
+            }, 1000);
+            return;
+        }
+
         document.getElementById('result-icon').textContent = '❌';
         document.getElementById('result-title').textContent = '不正解...';
     }
@@ -578,7 +572,11 @@ function advanceQuestion() {
     currentQuestionIndex++;
     
     if (currentQuestionIndex >= questions.length) {
-        showResult();
+        if (isShuraRoute) {
+            showShuraResult();
+        } else {
+            showResult();
+        }
     } else {
         showScreen('quiz');
         displayQuestion();
@@ -623,12 +621,37 @@ function showResult() {
     showScreen('result');
 }
 
+// 修羅ルート結果表示
+function showShuraResult() {
+    const shuraResultTitle = document.getElementById('shura-result-title');
+    const shuraExplanationText = document.getElementById('shura-explanation-text');
+    const shuraSurvivedText = document.getElementById('shura-survived-text');
+
+    const totalQuestions = questions.length;
+    const survivalMessage = `💀 ${score}問を耐えきった...`;
+
+    if (shuraExplanationText) {
+        shuraExplanationText.textContent = `修羅の道で散ってしまいました...`;
+    }
+
+    if (shuraSurvivedText) {
+        shuraSurvivedText.textContent = survivalMessage;
+    }
+
+    if (shuraResultTitle) {
+        shuraResultTitle.textContent = '修羅の道に散る...';
+    }
+
+    showScreen('shuraResult');
+}
+
 // クイズリセット
 function resetQuiz() {
     currentGenre = null;
     currentQuestionIndex = 0;
     score = 0;
     questions = [];
+    isShuraRoute = false;
 }
 
 // クリア状況の保存と読み込み
@@ -654,11 +677,56 @@ function loadClearedGenres() {
     }
 }
 
+// 間違えた問題の保存と読み込み
+function saveWrongAnswers() {
+    try {
+        localStorage.setItem(wrongAnswersStorageKey, JSON.stringify(wrongAnswers));
+    } catch (error) {
+        console.warn('間違えた問題の保存に失敗:', error);
+    }
+}
+
+function loadWrongAnswers() {
+    try {
+        const storedWrongAnswers = localStorage.getItem(wrongAnswersStorageKey);
+        if (storedWrongAnswers) {
+            wrongAnswers = JSON.parse(storedWrongAnswers);
+        } else {
+            wrongAnswers = {};
+        }
+    } catch (error) {
+        console.warn('間違えた問題の読み込みに失敗:', error);
+        wrongAnswers = {};
+    }
+}
+
+// 間違えた問題を記録
+function recordWrongAnswer(question) {
+    if (!currentGenre || isShuraRoute || !question) return;
+
+    if (!wrongAnswers[currentGenre]) {
+        wrongAnswers[currentGenre] = [];
+    }
+
+    // 重複チェック
+    const isDuplicate = wrongAnswers[currentGenre].some(q => 
+        q.question === question.question && 
+        q.correct === question.correct
+    );
+
+    if (!isDuplicate) {
+        wrongAnswers[currentGenre].push(question);
+        saveWrongAnswers();
+    }
+}
+
 // データリセット機能（デバッグ用）
 function resetAllData() {
     if (confirm('全ての進行状況をリセットしますか？この操作は取り消せません。')) {
         clearedGenres = {};
+        wrongAnswers = {};
         saveClearedGenres();
+        saveWrongAnswers();
         renderGenreButtons();
         alert('全ての進行状況がリセットされました。');
     }
@@ -667,7 +735,6 @@ function resetAllData() {
 // エラーハンドリング
 window.addEventListener('error', (e) => {
     console.error('JavaScript エラー:', e.error);
-    showErrorMessage('予期しないエラーが発生しました。ページを再読み込みしてください。');
 });
 
 window.addEventListener('unhandledrejection', (e) => {
@@ -686,25 +753,13 @@ document.addEventListener('visibilitychange', () => {
     }
 });
 
-// サービスワーカー登録（オフライン対応）
-if ('serviceWorker' in navigator) {
-    window.addEventListener('load', () => {
-        navigator.serviceWorker.register('./sw.js')
-            .then((registration) => {
-                console.log('ServiceWorker registered: ', registration);
-            })
-            .catch((registrationError) => {
-                console.log('ServiceWorker registration failed: ', registrationError);
-            });
-    });
-}
-
 // デバッグ用関数（開発時のみ使用）
 if (typeof window !== 'undefined') {
     window.debugQuiz = {
         resetAllData,
         showAllGenres: () => console.log(quizData),
         showClearedGenres: () => console.log(clearedGenres),
+        showWrongAnswers: () => console.log(wrongAnswers),
         forceCompleteGenre: (genreId) => {
             clearedGenres[genreId] = true;
             saveClearedGenres();
